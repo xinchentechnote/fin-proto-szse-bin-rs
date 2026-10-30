@@ -2,6 +2,53 @@
 use binary_codec::*;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
+#[inline]
+fn put_fixed_string_field(
+    buf: &mut BytesMut,
+    value: &str,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) {
+    let bytes = value.as_bytes();
+    let len = bytes.len().min(fixed_length);
+    let padding_len = fixed_length - len;
+    if pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+    buf.extend_from_slice(&bytes[..len]);
+    if !pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+}
+
+#[inline]
+fn get_fixed_string_field(
+    buf: &mut Bytes,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) -> Option<String> {
+    if buf.remaining() < fixed_length {
+        return None;
+    }
+    let bytes = buf.copy_to_bytes(fixed_length);
+    let (start, end) = if pad_left {
+        let start = bytes
+            .iter()
+            .position(|&byte| byte != pad_byte)
+            .unwrap_or(fixed_length);
+        (start, fixed_length)
+    } else {
+        let end = bytes
+            .iter()
+            .rposition(|&byte| byte != pad_byte)
+            .map_or(0, |index| index + 1);
+        (0, end)
+    };
+    String::from_utf8(bytes.slice(start..end).to_vec()).ok()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Extend206302 {
     pub reject_text: String,
@@ -15,24 +62,26 @@ pub struct Extend206302 {
 }
 
 impl BinaryCodec for Extend206302 {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
-        put_char_array(buf, &self.reject_text, 16);
+        put_fixed_string_field(buf, &self.reject_text, 16, b' ', false);
         buf.put_i64(self.stop_px);
         buf.put_i64(self.min_qty);
         buf.put_u16(self.max_price_levels);
-        put_char_array(buf, &self.time_in_force, 1);
-        put_char_array(buf, &self.lot_type, 1);
+        put_fixed_string_field(buf, &self.time_in_force, 1, b' ', false);
+        put_fixed_string_field(buf, &self.lot_type, 1, b' ', false);
         buf.put_u32(self.imc_reject_text_len);
         put_string::<u32>(buf, &self.imc_reject_text);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<Extend206302> {
-        let reject_text = get_char_array(buf, 16)?;
+        let reject_text = get_fixed_string_field(buf, 16, b' ', false)?;
         let stop_px = buf.get_i64();
         let min_qty = buf.get_i64();
         let max_price_levels = buf.get_u16();
-        let time_in_force = get_char_array(buf, 1)?;
-        let lot_type = get_char_array(buf, 1)?;
+        let time_in_force = get_fixed_string_field(buf, 1, b' ', false)?;
+        let lot_type = get_fixed_string_field(buf, 1, b' ', false)?;
         let imc_reject_text_len = buf.get_u32();
         let imc_reject_text = get_string::<u32>(buf)?;
         Some(Self {
@@ -56,12 +105,12 @@ mod extend_206302_tests {
     #[test]
     fn test_extend_206302_codec() {
         let original = Extend206302 {
-            reject_text: vec!['a'; 16].into_iter().collect::<String>(),
+            reject_text: "a".repeat(16),
             stop_px: -123456789,
             min_qty: -123456789,
             max_price_levels: 1234,
-            time_in_force: vec!['a'; 1].into_iter().collect::<String>(),
-            lot_type: vec!['a'; 1].into_iter().collect::<String>(),
+            time_in_force: "a".to_string(),
+            lot_type: "a".to_string(),
             imc_reject_text_len: 123456,
             imc_reject_text: "example".to_string(),
         };

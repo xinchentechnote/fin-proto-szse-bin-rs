@@ -2,6 +2,53 @@
 use binary_codec::*;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
+#[inline]
+fn put_fixed_string_field(
+    buf: &mut BytesMut,
+    value: &str,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) {
+    let bytes = value.as_bytes();
+    let len = bytes.len().min(fixed_length);
+    let padding_len = fixed_length - len;
+    if pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+    buf.extend_from_slice(&bytes[..len]);
+    if !pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+}
+
+#[inline]
+fn get_fixed_string_field(
+    buf: &mut Bytes,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) -> Option<String> {
+    if buf.remaining() < fixed_length {
+        return None;
+    }
+    let bytes = buf.copy_to_bytes(fixed_length);
+    let (start, end) = if pad_left {
+        let start = bytes
+            .iter()
+            .position(|&byte| byte != pad_byte)
+            .unwrap_or(fixed_length);
+        (start, fixed_length)
+    } else {
+        let end = bytes
+            .iter()
+            .rposition(|&byte| byte != pad_byte)
+            .map_or(0, |index| index + 1);
+        (0, end)
+    };
+    String::from_utf8(bytes.slice(start..end).to_vec()).ok()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Extend204115 {
     pub cash_margin: String,
@@ -15,26 +62,28 @@ pub struct Extend204115 {
 }
 
 impl BinaryCodec for Extend204115 {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
-        put_char_array(buf, &self.cash_margin, 1);
+        put_fixed_string_field(buf, &self.cash_margin, 1, b' ', false);
         buf.put_u16(self.settl_type);
         buf.put_u8(self.settl_period);
-        put_char_array(buf, &self.counterparty_member_id, 6);
-        put_char_array(buf, &self.counterparty_investor_type, 2);
-        put_char_array(buf, &self.counterparty_investor_id, 10);
-        put_char_array(buf, &self.counterparty_investor_name, 120);
-        put_char_array(buf, &self.counterparty_trader_code, 8);
+        put_fixed_string_field(buf, &self.counterparty_member_id, 6, b' ', false);
+        put_fixed_string_field(buf, &self.counterparty_investor_type, 2, b' ', false);
+        put_fixed_string_field(buf, &self.counterparty_investor_id, 10, b' ', false);
+        put_fixed_string_field(buf, &self.counterparty_investor_name, 120, b' ', false);
+        put_fixed_string_field(buf, &self.counterparty_trader_code, 8, b' ', false);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<Extend204115> {
-        let cash_margin = get_char_array(buf, 1)?;
+        let cash_margin = get_fixed_string_field(buf, 1, b' ', false)?;
         let settl_type = buf.get_u16();
         let settl_period = buf.get_u8();
-        let counterparty_member_id = get_char_array(buf, 6)?;
-        let counterparty_investor_type = get_char_array(buf, 2)?;
-        let counterparty_investor_id = get_char_array(buf, 10)?;
-        let counterparty_investor_name = get_char_array(buf, 120)?;
-        let counterparty_trader_code = get_char_array(buf, 8)?;
+        let counterparty_member_id = get_fixed_string_field(buf, 6, b' ', false)?;
+        let counterparty_investor_type = get_fixed_string_field(buf, 2, b' ', false)?;
+        let counterparty_investor_id = get_fixed_string_field(buf, 10, b' ', false)?;
+        let counterparty_investor_name = get_fixed_string_field(buf, 120, b' ', false)?;
+        let counterparty_trader_code = get_fixed_string_field(buf, 8, b' ', false)?;
         Some(Self {
             cash_margin,
             settl_type,
@@ -56,14 +105,14 @@ mod extend_204115_tests {
     #[test]
     fn test_extend_204115_codec() {
         let original = Extend204115 {
-            cash_margin: vec!['a'; 1].into_iter().collect::<String>(),
+            cash_margin: "a".to_string(),
             settl_type: 1234,
             settl_period: 42,
-            counterparty_member_id: vec!['a'; 6].into_iter().collect::<String>(),
-            counterparty_investor_type: vec!['a'; 2].into_iter().collect::<String>(),
-            counterparty_investor_id: vec!['a'; 10].into_iter().collect::<String>(),
-            counterparty_investor_name: vec!['a'; 120].into_iter().collect::<String>(),
-            counterparty_trader_code: vec!['a'; 8].into_iter().collect::<String>(),
+            counterparty_member_id: "a".repeat(6),
+            counterparty_investor_type: "a".repeat(2),
+            counterparty_investor_id: "a".repeat(10),
+            counterparty_investor_name: "a".repeat(120),
+            counterparty_trader_code: "a".repeat(8),
         };
 
         let mut buf = BytesMut::new();

@@ -11,11 +11,13 @@ pub struct PlatformInfo {
 }
 
 impl BinaryCodec for PlatformInfo {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
         buf.put_u16(self.platform_id);
         put_object_list::<PlatformPartition, u32>(buf, &self.platform_partition);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<PlatformInfo> {
         let platform_id = buf.get_u16();
         let platform_partition = get_object_list::<PlatformPartition, u32>(buf)?;

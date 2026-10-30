@@ -8,10 +8,12 @@ pub struct Extend201702 {
 }
 
 impl BinaryCodec for Extend201702 {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
         buf.put_i64(self.cash_order_qty);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<Extend201702> {
         let cash_order_qty = buf.get_i64();
         Some(Self { cash_order_qty })

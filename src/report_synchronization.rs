@@ -10,10 +10,12 @@ pub struct ReportSynchronization {
 }
 
 impl BinaryCodec for ReportSynchronization {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
         put_object_list::<PartitionReport, u32>(buf, &self.partition_report);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<ReportSynchronization> {
         let partition_report = get_object_list::<PartitionReport, u32>(buf)?;
         Some(Self { partition_report })

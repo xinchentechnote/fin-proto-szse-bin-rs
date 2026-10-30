@@ -2,6 +2,53 @@
 use binary_codec::*;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
+#[inline]
+fn put_fixed_string_field(
+    buf: &mut BytesMut,
+    value: &str,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) {
+    let bytes = value.as_bytes();
+    let len = bytes.len().min(fixed_length);
+    let padding_len = fixed_length - len;
+    if pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+    buf.extend_from_slice(&bytes[..len]);
+    if !pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+}
+
+#[inline]
+fn get_fixed_string_field(
+    buf: &mut Bytes,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) -> Option<String> {
+    if buf.remaining() < fixed_length {
+        return None;
+    }
+    let bytes = buf.copy_to_bytes(fixed_length);
+    let (start, end) = if pad_left {
+        let start = bytes
+            .iter()
+            .position(|&byte| byte != pad_byte)
+            .unwrap_or(fixed_length);
+        (start, fixed_length)
+    } else {
+        let end = bytes
+            .iter()
+            .rposition(|&byte| byte != pad_byte)
+            .map_or(0, |index| index + 1);
+        (0, end)
+    };
+    String::from_utf8(bytes.slice(start..end).to_vec()).ok()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct OrderCancelRequest {
     pub appl_id: String,
@@ -20,35 +67,37 @@ pub struct OrderCancelRequest {
 }
 
 impl BinaryCodec for OrderCancelRequest {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
-        put_char_array(buf, &self.appl_id, 3);
-        put_char_array(buf, &self.submitting_pbuid, 6);
-        put_char_array(buf, &self.security_id, 8);
-        put_char_array(buf, &self.security_id_source, 4);
+        put_fixed_string_field(buf, &self.appl_id, 3, b' ', false);
+        put_fixed_string_field(buf, &self.submitting_pbuid, 6, b' ', false);
+        put_fixed_string_field(buf, &self.security_id, 8, b' ', false);
+        put_fixed_string_field(buf, &self.security_id_source, 4, b' ', false);
         buf.put_u16(self.owner_type);
-        put_char_array(buf, &self.clearing_firm, 2);
+        put_fixed_string_field(buf, &self.clearing_firm, 2, b' ', false);
         buf.put_i64(self.transact_time);
-        put_char_array(buf, &self.user_info, 8);
-        put_char_array(buf, &self.cl_ord_id, 10);
-        put_char_array(buf, &self.orig_cl_ord_id, 10);
-        put_char_array(buf, &self.side, 1);
-        put_char_array(buf, &self.order_id, 16);
+        put_fixed_string_field(buf, &self.user_info, 8, b' ', false);
+        put_fixed_string_field(buf, &self.cl_ord_id, 10, b' ', false);
+        put_fixed_string_field(buf, &self.orig_cl_ord_id, 10, b' ', false);
+        put_fixed_string_field(buf, &self.side, 1, b' ', false);
+        put_fixed_string_field(buf, &self.order_id, 16, b' ', false);
         buf.put_i64(self.order_qty);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<OrderCancelRequest> {
-        let appl_id = get_char_array(buf, 3)?;
-        let submitting_pbuid = get_char_array(buf, 6)?;
-        let security_id = get_char_array(buf, 8)?;
-        let security_id_source = get_char_array(buf, 4)?;
+        let appl_id = get_fixed_string_field(buf, 3, b' ', false)?;
+        let submitting_pbuid = get_fixed_string_field(buf, 6, b' ', false)?;
+        let security_id = get_fixed_string_field(buf, 8, b' ', false)?;
+        let security_id_source = get_fixed_string_field(buf, 4, b' ', false)?;
         let owner_type = buf.get_u16();
-        let clearing_firm = get_char_array(buf, 2)?;
+        let clearing_firm = get_fixed_string_field(buf, 2, b' ', false)?;
         let transact_time = buf.get_i64();
-        let user_info = get_char_array(buf, 8)?;
-        let cl_ord_id = get_char_array(buf, 10)?;
-        let orig_cl_ord_id = get_char_array(buf, 10)?;
-        let side = get_char_array(buf, 1)?;
-        let order_id = get_char_array(buf, 16)?;
+        let user_info = get_fixed_string_field(buf, 8, b' ', false)?;
+        let cl_ord_id = get_fixed_string_field(buf, 10, b' ', false)?;
+        let orig_cl_ord_id = get_fixed_string_field(buf, 10, b' ', false)?;
+        let side = get_fixed_string_field(buf, 1, b' ', false)?;
+        let order_id = get_fixed_string_field(buf, 16, b' ', false)?;
         let order_qty = buf.get_i64();
         Some(Self {
             appl_id,
@@ -76,18 +125,18 @@ mod order_cancel_request_tests {
     #[test]
     fn test_order_cancel_request_codec() {
         let original = OrderCancelRequest {
-            appl_id: vec!['a'; 3].into_iter().collect::<String>(),
-            submitting_pbuid: vec!['a'; 6].into_iter().collect::<String>(),
-            security_id: vec!['a'; 8].into_iter().collect::<String>(),
-            security_id_source: vec!['a'; 4].into_iter().collect::<String>(),
+            appl_id: "a".repeat(3),
+            submitting_pbuid: "a".repeat(6),
+            security_id: "a".repeat(8),
+            security_id_source: "a".repeat(4),
             owner_type: 1234,
-            clearing_firm: vec!['a'; 2].into_iter().collect::<String>(),
+            clearing_firm: "a".repeat(2),
             transact_time: -123456789,
-            user_info: vec!['a'; 8].into_iter().collect::<String>(),
-            cl_ord_id: vec!['a'; 10].into_iter().collect::<String>(),
-            orig_cl_ord_id: vec!['a'; 10].into_iter().collect::<String>(),
-            side: vec!['a'; 1].into_iter().collect::<String>(),
-            order_id: vec!['a'; 16].into_iter().collect::<String>(),
+            user_info: "a".repeat(8),
+            cl_ord_id: "a".repeat(10),
+            orig_cl_ord_id: "a".repeat(10),
+            side: "a".to_string(),
+            order_id: "a".repeat(16),
             order_qty: -123456789,
         };
 

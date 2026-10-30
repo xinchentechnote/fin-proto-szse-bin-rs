@@ -14,6 +14,53 @@ use crate::extend_204130::*;
 use crate::extend_204715::*;
 use crate::extend_206315::*;
 
+#[inline]
+fn put_fixed_string_field(
+    buf: &mut BytesMut,
+    value: &str,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) {
+    let bytes = value.as_bytes();
+    let len = bytes.len().min(fixed_length);
+    let padding_len = fixed_length - len;
+    if pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+    buf.extend_from_slice(&bytes[..len]);
+    if !pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+}
+
+#[inline]
+fn get_fixed_string_field(
+    buf: &mut Bytes,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) -> Option<String> {
+    if buf.remaining() < fixed_length {
+        return None;
+    }
+    let bytes = buf.copy_to_bytes(fixed_length);
+    let (start, end) = if pad_left {
+        let start = bytes
+            .iter()
+            .position(|&byte| byte != pad_byte)
+            .unwrap_or(fixed_length);
+        (start, fixed_length)
+    } else {
+        let end = bytes
+            .iter()
+            .rposition(|&byte| byte != pad_byte)
+            .map_or(0, |index| index + 1);
+        (0, end)
+    };
+    String::from_utf8(bytes.slice(start..end).to_vec()).ok()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecutionReportApplExtendEnum {
     Extend200115(Extend200115),
@@ -59,31 +106,32 @@ pub struct ExecutionReport {
 }
 
 impl BinaryCodec for ExecutionReport {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
         buf.put_i32(self.partition_no);
         buf.put_i64(self.report_index);
-        put_char_array(buf, &self.appl_id, 3);
-        put_char_array(buf, &self.reporting_pbuid, 6);
-        put_char_array(buf, &self.submitting_pbuid, 6);
-        put_char_array(buf, &self.security_id, 8);
-        put_char_array(buf, &self.security_id_source, 4);
+        put_fixed_string_field(buf, &self.appl_id, 3, b' ', false);
+        put_fixed_string_field(buf, &self.reporting_pbuid, 6, b' ', false);
+        put_fixed_string_field(buf, &self.submitting_pbuid, 6, b' ', false);
+        put_fixed_string_field(buf, &self.security_id, 8, b' ', false);
+        put_fixed_string_field(buf, &self.security_id_source, 4, b' ', false);
         buf.put_u16(self.owner_type);
-        put_char_array(buf, &self.clearing_firm, 2);
+        put_fixed_string_field(buf, &self.clearing_firm, 2, b' ', false);
         buf.put_i64(self.transact_time);
-        put_char_array(buf, &self.user_info, 8);
-        put_char_array(buf, &self.order_id, 16);
-        put_char_array(buf, &self.cl_ord_id, 10);
-        put_char_array(buf, &self.quote_msg_id, 10);
-        put_char_array(buf, &self.exec_id, 16);
-        put_char_array(buf, &self.exec_type, 1);
-        put_char_array(buf, &self.ord_status, 1);
+        put_fixed_string_field(buf, &self.user_info, 8, b' ', false);
+        put_fixed_string_field(buf, &self.order_id, 16, b' ', false);
+        put_fixed_string_field(buf, &self.cl_ord_id, 10, b' ', false);
+        put_fixed_string_field(buf, &self.quote_msg_id, 10, b' ', false);
+        put_fixed_string_field(buf, &self.exec_id, 16, b' ', false);
+        put_fixed_string_field(buf, &self.exec_type, 1, b' ', false);
+        put_fixed_string_field(buf, &self.ord_status, 1, b' ', false);
         buf.put_i64(self.last_px);
         buf.put_i64(self.last_qty);
         buf.put_i64(self.leaves_qty);
         buf.put_i64(self.cum_qty);
-        put_char_array(buf, &self.side, 1);
-        put_char_array(buf, &self.account_id, 12);
-        put_char_array(buf, &self.branch_id, 4);
+        put_fixed_string_field(buf, &self.side, 1, b' ', false);
+        put_fixed_string_field(buf, &self.account_id, 12, b' ', false);
+        put_fixed_string_field(buf, &self.branch_id, 4, b' ', false);
         match &self.appl_extend {
             ExecutionReportApplExtendEnum::Extend200115(msg) => msg.encode(buf),
             ExecutionReportApplExtendEnum::Extend200215(msg) => msg.encode(buf),
@@ -99,31 +147,32 @@ impl BinaryCodec for ExecutionReport {
         }
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<ExecutionReport> {
         let partition_no = buf.get_i32();
         let report_index = buf.get_i64();
-        let appl_id = get_char_array(buf, 3)?;
-        let reporting_pbuid = get_char_array(buf, 6)?;
-        let submitting_pbuid = get_char_array(buf, 6)?;
-        let security_id = get_char_array(buf, 8)?;
-        let security_id_source = get_char_array(buf, 4)?;
+        let appl_id = get_fixed_string_field(buf, 3, b' ', false)?;
+        let reporting_pbuid = get_fixed_string_field(buf, 6, b' ', false)?;
+        let submitting_pbuid = get_fixed_string_field(buf, 6, b' ', false)?;
+        let security_id = get_fixed_string_field(buf, 8, b' ', false)?;
+        let security_id_source = get_fixed_string_field(buf, 4, b' ', false)?;
         let owner_type = buf.get_u16();
-        let clearing_firm = get_char_array(buf, 2)?;
+        let clearing_firm = get_fixed_string_field(buf, 2, b' ', false)?;
         let transact_time = buf.get_i64();
-        let user_info = get_char_array(buf, 8)?;
-        let order_id = get_char_array(buf, 16)?;
-        let cl_ord_id = get_char_array(buf, 10)?;
-        let quote_msg_id = get_char_array(buf, 10)?;
-        let exec_id = get_char_array(buf, 16)?;
-        let exec_type = get_char_array(buf, 1)?;
-        let ord_status = get_char_array(buf, 1)?;
+        let user_info = get_fixed_string_field(buf, 8, b' ', false)?;
+        let order_id = get_fixed_string_field(buf, 16, b' ', false)?;
+        let cl_ord_id = get_fixed_string_field(buf, 10, b' ', false)?;
+        let quote_msg_id = get_fixed_string_field(buf, 10, b' ', false)?;
+        let exec_id = get_fixed_string_field(buf, 16, b' ', false)?;
+        let exec_type = get_fixed_string_field(buf, 1, b' ', false)?;
+        let ord_status = get_fixed_string_field(buf, 1, b' ', false)?;
         let last_px = buf.get_i64();
         let last_qty = buf.get_i64();
         let leaves_qty = buf.get_i64();
         let cum_qty = buf.get_i64();
-        let side = get_char_array(buf, 1)?;
-        let account_id = get_char_array(buf, 12)?;
-        let branch_id = get_char_array(buf, 4)?;
+        let side = get_fixed_string_field(buf, 1, b' ', false)?;
+        let account_id = get_fixed_string_field(buf, 12, b' ', false)?;
+        let branch_id = get_fixed_string_field(buf, 4, b' ', false)?;
         let appl_extend = match appl_id.as_str() {
             "010" => ExecutionReportApplExtendEnum::Extend200115(Extend200115::decode(buf)?),
             "020" => ExecutionReportApplExtendEnum::Extend200215(Extend200215::decode(buf)?),
@@ -186,30 +235,30 @@ mod execution_report_tests {
         let original = ExecutionReport {
             partition_no: -123456,
             report_index: -123456789,
-            reporting_pbuid: vec!['a'; 6].into_iter().collect::<String>(),
-            submitting_pbuid: vec!['a'; 6].into_iter().collect::<String>(),
-            security_id: vec!['a'; 8].into_iter().collect::<String>(),
-            security_id_source: vec!['a'; 4].into_iter().collect::<String>(),
+            reporting_pbuid: "a".repeat(6),
+            submitting_pbuid: "a".repeat(6),
+            security_id: "a".repeat(8),
+            security_id_source: "a".repeat(4),
             owner_type: 1234,
-            clearing_firm: vec!['a'; 2].into_iter().collect::<String>(),
+            clearing_firm: "a".repeat(2),
             transact_time: -123456789,
-            user_info: vec!['a'; 8].into_iter().collect::<String>(),
-            order_id: vec!['a'; 16].into_iter().collect::<String>(),
-            cl_ord_id: vec!['a'; 10].into_iter().collect::<String>(),
-            quote_msg_id: vec!['a'; 10].into_iter().collect::<String>(),
-            exec_id: vec!['a'; 16].into_iter().collect::<String>(),
-            exec_type: vec!['a'; 1].into_iter().collect::<String>(),
-            ord_status: vec!['a'; 1].into_iter().collect::<String>(),
+            user_info: "a".repeat(8),
+            order_id: "a".repeat(16),
+            cl_ord_id: "a".repeat(10),
+            quote_msg_id: "a".repeat(10),
+            exec_id: "a".repeat(16),
+            exec_type: "a".to_string(),
+            ord_status: "a".to_string(),
             last_px: -123456789,
             last_qty: -123456789,
             leaves_qty: -123456789,
             cum_qty: -123456789,
-            side: vec!['a'; 1].into_iter().collect::<String>(),
-            account_id: vec!['a'; 12].into_iter().collect::<String>(),
-            branch_id: vec!['a'; 4].into_iter().collect::<String>(),
+            side: "a".to_string(),
+            account_id: "a".repeat(12),
+            branch_id: "a".repeat(4),
             appl_id: "010".to_string(),
             appl_extend: ExecutionReportApplExtendEnum::Extend200115(Extend200115 {
-                cash_margin: vec!['a'; 1].into_iter().collect::<String>(),
+                cash_margin: "a".to_string(),
             }),
         };
 

@@ -9,11 +9,13 @@ pub struct PlatformStateInfo {
 }
 
 impl BinaryCodec for PlatformStateInfo {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
         buf.put_u16(self.platform_id);
         buf.put_u16(self.platform_state);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<PlatformStateInfo> {
         let platform_id = buf.get_u16();
         let platform_state = buf.get_u16();

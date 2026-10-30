@@ -2,6 +2,53 @@
 use binary_codec::*;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
+#[inline]
+fn put_fixed_string_field(
+    buf: &mut BytesMut,
+    value: &str,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) {
+    let bytes = value.as_bytes();
+    let len = bytes.len().min(fixed_length);
+    let padding_len = fixed_length - len;
+    if pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+    buf.extend_from_slice(&bytes[..len]);
+    if !pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+}
+
+#[inline]
+fn get_fixed_string_field(
+    buf: &mut Bytes,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) -> Option<String> {
+    if buf.remaining() < fixed_length {
+        return None;
+    }
+    let bytes = buf.copy_to_bytes(fixed_length);
+    let (start, end) = if pad_left {
+        let start = bytes
+            .iter()
+            .position(|&byte| byte != pad_byte)
+            .unwrap_or(fixed_length);
+        (start, fixed_length)
+    } else {
+        let end = bytes
+            .iter()
+            .rposition(|&byte| byte != pad_byte)
+            .map_or(0, |index| index + 1);
+        (0, end)
+    };
+    String::from_utf8(bytes.slice(start..end).to_vec()).ok()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TradingSessionStatus {
     pub market_id: String,
@@ -14,21 +61,23 @@ pub struct TradingSessionStatus {
 }
 
 impl BinaryCodec for TradingSessionStatus {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
-        put_char_array(buf, &self.market_id, 8);
-        put_char_array(buf, &self.market_segment_id, 8);
-        put_char_array(buf, &self.trading_session_id, 4);
-        put_char_array(buf, &self.trading_session_sub_id, 4);
+        put_fixed_string_field(buf, &self.market_id, 8, b' ', false);
+        put_fixed_string_field(buf, &self.market_segment_id, 8, b' ', false);
+        put_fixed_string_field(buf, &self.trading_session_id, 4, b' ', false);
+        put_fixed_string_field(buf, &self.trading_session_sub_id, 4, b' ', false);
         buf.put_u16(self.trad_ses_status);
         buf.put_i64(self.trad_ses_start_time);
         buf.put_i64(self.trad_ses_end_time);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<TradingSessionStatus> {
-        let market_id = get_char_array(buf, 8)?;
-        let market_segment_id = get_char_array(buf, 8)?;
-        let trading_session_id = get_char_array(buf, 4)?;
-        let trading_session_sub_id = get_char_array(buf, 4)?;
+        let market_id = get_fixed_string_field(buf, 8, b' ', false)?;
+        let market_segment_id = get_fixed_string_field(buf, 8, b' ', false)?;
+        let trading_session_id = get_fixed_string_field(buf, 4, b' ', false)?;
+        let trading_session_sub_id = get_fixed_string_field(buf, 4, b' ', false)?;
         let trad_ses_status = buf.get_u16();
         let trad_ses_start_time = buf.get_i64();
         let trad_ses_end_time = buf.get_i64();
@@ -52,10 +101,10 @@ mod trading_session_status_tests {
     #[test]
     fn test_trading_session_status_codec() {
         let original = TradingSessionStatus {
-            market_id: vec!['a'; 8].into_iter().collect::<String>(),
-            market_segment_id: vec!['a'; 8].into_iter().collect::<String>(),
-            trading_session_id: vec!['a'; 4].into_iter().collect::<String>(),
-            trading_session_sub_id: vec!['a'; 4].into_iter().collect::<String>(),
+            market_id: "a".repeat(8),
+            market_segment_id: "a".repeat(8),
+            trading_session_id: "a".repeat(4),
+            trading_session_sub_id: "a".repeat(4),
             trad_ses_status: 1234,
             trad_ses_start_time: -123456789,
             trad_ses_end_time: -123456789,

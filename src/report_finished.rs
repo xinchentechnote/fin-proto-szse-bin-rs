@@ -10,12 +10,14 @@ pub struct ReportFinished {
 }
 
 impl BinaryCodec for ReportFinished {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
         buf.put_i32(self.partition_no);
         buf.put_i64(self.report_index);
         buf.put_u16(self.platform_id);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<ReportFinished> {
         let partition_no = buf.get_i32();
         let report_index = buf.get_i64();

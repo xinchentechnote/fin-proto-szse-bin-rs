@@ -2,6 +2,53 @@
 use binary_codec::*;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
+#[inline]
+fn put_fixed_string_field(
+    buf: &mut BytesMut,
+    value: &str,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) {
+    let bytes = value.as_bytes();
+    let len = bytes.len().min(fixed_length);
+    let padding_len = fixed_length - len;
+    if pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+    buf.extend_from_slice(&bytes[..len]);
+    if !pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+}
+
+#[inline]
+fn get_fixed_string_field(
+    buf: &mut Bytes,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) -> Option<String> {
+    if buf.remaining() < fixed_length {
+        return None;
+    }
+    let bytes = buf.copy_to_bytes(fixed_length);
+    let (start, end) = if pad_left {
+        let start = bytes
+            .iter()
+            .position(|&byte| byte != pad_byte)
+            .unwrap_or(fixed_length);
+        (start, fixed_length)
+    } else {
+        let end = bytes
+            .iter()
+            .rposition(|&byte| byte != pad_byte)
+            .map_or(0, |index| index + 1);
+        (0, end)
+    };
+    String::from_utf8(bytes.slice(start..end).to_vec()).ok()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Extend200402 {
     pub stop_px: i64,
@@ -15,26 +62,28 @@ pub struct Extend200402 {
 }
 
 impl BinaryCodec for Extend200402 {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
         buf.put_i64(self.stop_px);
         buf.put_i64(self.min_qty);
         buf.put_u16(self.max_price_levels);
-        put_char_array(buf, &self.time_in_force, 1);
-        put_char_array(buf, &self.position_effect, 1);
+        put_fixed_string_field(buf, &self.time_in_force, 1, b' ', false);
+        put_fixed_string_field(buf, &self.position_effect, 1, b' ', false);
         buf.put_u8(self.covered_or_uncovered);
-        put_char_array(buf, &self.contract_account_code, 6);
-        put_char_array(buf, &self.secondary_order_id, 16);
+        put_fixed_string_field(buf, &self.contract_account_code, 6, b' ', false);
+        put_fixed_string_field(buf, &self.secondary_order_id, 16, b' ', false);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<Extend200402> {
         let stop_px = buf.get_i64();
         let min_qty = buf.get_i64();
         let max_price_levels = buf.get_u16();
-        let time_in_force = get_char_array(buf, 1)?;
-        let position_effect = get_char_array(buf, 1)?;
+        let time_in_force = get_fixed_string_field(buf, 1, b' ', false)?;
+        let position_effect = get_fixed_string_field(buf, 1, b' ', false)?;
         let covered_or_uncovered = buf.get_u8();
-        let contract_account_code = get_char_array(buf, 6)?;
-        let secondary_order_id = get_char_array(buf, 16)?;
+        let contract_account_code = get_fixed_string_field(buf, 6, b' ', false)?;
+        let secondary_order_id = get_fixed_string_field(buf, 16, b' ', false)?;
         Some(Self {
             stop_px,
             min_qty,
@@ -59,11 +108,11 @@ mod extend_200402_tests {
             stop_px: -123456789,
             min_qty: -123456789,
             max_price_levels: 1234,
-            time_in_force: vec!['a'; 1].into_iter().collect::<String>(),
-            position_effect: vec!['a'; 1].into_iter().collect::<String>(),
+            time_in_force: "a".to_string(),
+            position_effect: "a".to_string(),
             covered_or_uncovered: 42,
-            contract_account_code: vec!['a'; 6].into_iter().collect::<String>(),
-            secondary_order_id: vec!['a'; 16].into_iter().collect::<String>(),
+            contract_account_code: "a".repeat(6),
+            secondary_order_id: "a".repeat(16),
         };
 
         let mut buf = BytesMut::new();

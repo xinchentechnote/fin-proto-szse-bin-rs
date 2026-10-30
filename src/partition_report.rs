@@ -9,11 +9,13 @@ pub struct PartitionReport {
 }
 
 impl BinaryCodec for PartitionReport {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
         buf.put_i32(self.partition_no);
         buf.put_i64(self.report_index);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<PartitionReport> {
         let partition_no = buf.get_i32();
         let report_index = buf.get_i64();

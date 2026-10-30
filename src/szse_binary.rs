@@ -45,6 +45,7 @@ pub struct SzseBinary {
 }
 
 impl BinaryCodec for SzseBinary {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
         buf.put_u32(self.msg_type);
         let body_length_pos = buf.len();
@@ -83,6 +84,7 @@ impl BinaryCodec for SzseBinary {
         buf.put_i32(val);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<SzseBinary> {
         let msg_type = buf.get_u32();
         let body_length = buf.get_u32();
@@ -187,11 +189,11 @@ mod szse_binary_tests {
             body_length: 0,
             msg_type: 1,
             body: SzseBinaryBodyEnum::Logon(Logon {
-                sender_comp_id: vec!['a'; 20].into_iter().collect::<String>(),
-                target_comp_id: vec!['a'; 20].into_iter().collect::<String>(),
+                sender_comp_id: "a".repeat(20),
+                target_comp_id: "a".repeat(20),
                 heart_btint: -123456,
-                password: vec!['a'; 16].into_iter().collect::<String>(),
-                default_appl_ver_id: vec!['a'; 32].into_iter().collect::<String>(),
+                password: "a".repeat(16),
+                default_appl_ver_id: "a".repeat(32),
             }),
             checksum: -123456,
         };

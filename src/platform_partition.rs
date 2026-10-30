@@ -8,10 +8,12 @@ pub struct PlatformPartition {
 }
 
 impl BinaryCodec for PlatformPartition {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
         buf.put_i32(self.partition_no);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<PlatformPartition> {
         let partition_no = buf.get_i32();
         Some(Self { partition_no })

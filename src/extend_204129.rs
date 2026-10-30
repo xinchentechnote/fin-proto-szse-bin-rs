@@ -2,6 +2,53 @@
 use binary_codec::*;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
+#[inline]
+fn put_fixed_string_field(
+    buf: &mut BytesMut,
+    value: &str,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) {
+    let bytes = value.as_bytes();
+    let len = bytes.len().min(fixed_length);
+    let padding_len = fixed_length - len;
+    if pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+    buf.extend_from_slice(&bytes[..len]);
+    if !pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+}
+
+#[inline]
+fn get_fixed_string_field(
+    buf: &mut Bytes,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) -> Option<String> {
+    if buf.remaining() < fixed_length {
+        return None;
+    }
+    let bytes = buf.copy_to_bytes(fixed_length);
+    let (start, end) = if pad_left {
+        let start = bytes
+            .iter()
+            .position(|&byte| byte != pad_byte)
+            .unwrap_or(fixed_length);
+        (start, fixed_length)
+    } else {
+        let end = bytes
+            .iter()
+            .rposition(|&byte| byte != pad_byte)
+            .map_or(0, |index| index + 1);
+        (0, end)
+    };
+    String::from_utf8(bytes.slice(start..end).to_vec()).ok()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Extend204129 {
     pub member_id: String,
@@ -24,13 +71,14 @@ pub struct Extend204129 {
 }
 
 impl BinaryCodec for Extend204129 {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
-        put_char_array(buf, &self.member_id, 6);
-        put_char_array(buf, &self.investor_type, 2);
-        put_char_array(buf, &self.investor_id, 10);
-        put_char_array(buf, &self.investor_name, 120);
-        put_char_array(buf, &self.trader_code, 8);
-        put_char_array(buf, &self.secondary_order_id, 16);
+        put_fixed_string_field(buf, &self.member_id, 6, b' ', false);
+        put_fixed_string_field(buf, &self.investor_type, 2, b' ', false);
+        put_fixed_string_field(buf, &self.investor_id, 10, b' ', false);
+        put_fixed_string_field(buf, &self.investor_name, 120, b' ', false);
+        put_fixed_string_field(buf, &self.trader_code, 8, b' ', false);
+        put_fixed_string_field(buf, &self.secondary_order_id, 16, b' ', false);
         buf.put_u16(self.bid_trans_type);
         buf.put_u16(self.bid_exec_inst_type);
         buf.put_i64(self.low_limit_price);
@@ -40,17 +88,18 @@ impl BinaryCodec for Extend204129 {
         buf.put_u16(self.settl_type);
         buf.put_u8(self.settl_period);
         buf.put_u8(self.pre_trade_anonymity);
-        put_char_array(buf, &self.cash_margin, 1);
-        put_char_array(buf, &self.memo, 160);
+        put_fixed_string_field(buf, &self.cash_margin, 1, b' ', false);
+        put_fixed_string_field(buf, &self.memo, 160, b' ', false);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<Extend204129> {
-        let member_id = get_char_array(buf, 6)?;
-        let investor_type = get_char_array(buf, 2)?;
-        let investor_id = get_char_array(buf, 10)?;
-        let investor_name = get_char_array(buf, 120)?;
-        let trader_code = get_char_array(buf, 8)?;
-        let secondary_order_id = get_char_array(buf, 16)?;
+        let member_id = get_fixed_string_field(buf, 6, b' ', false)?;
+        let investor_type = get_fixed_string_field(buf, 2, b' ', false)?;
+        let investor_id = get_fixed_string_field(buf, 10, b' ', false)?;
+        let investor_name = get_fixed_string_field(buf, 120, b' ', false)?;
+        let trader_code = get_fixed_string_field(buf, 8, b' ', false)?;
+        let secondary_order_id = get_fixed_string_field(buf, 16, b' ', false)?;
         let bid_trans_type = buf.get_u16();
         let bid_exec_inst_type = buf.get_u16();
         let low_limit_price = buf.get_i64();
@@ -60,8 +109,8 @@ impl BinaryCodec for Extend204129 {
         let settl_type = buf.get_u16();
         let settl_period = buf.get_u8();
         let pre_trade_anonymity = buf.get_u8();
-        let cash_margin = get_char_array(buf, 1)?;
-        let memo = get_char_array(buf, 160)?;
+        let cash_margin = get_fixed_string_field(buf, 1, b' ', false)?;
+        let memo = get_fixed_string_field(buf, 160, b' ', false)?;
         Some(Self {
             member_id,
             investor_type,
@@ -92,12 +141,12 @@ mod extend_204129_tests {
     #[test]
     fn test_extend_204129_codec() {
         let original = Extend204129 {
-            member_id: vec!['a'; 6].into_iter().collect::<String>(),
-            investor_type: vec!['a'; 2].into_iter().collect::<String>(),
-            investor_id: vec!['a'; 10].into_iter().collect::<String>(),
-            investor_name: vec!['a'; 120].into_iter().collect::<String>(),
-            trader_code: vec!['a'; 8].into_iter().collect::<String>(),
-            secondary_order_id: vec!['a'; 16].into_iter().collect::<String>(),
+            member_id: "a".repeat(6),
+            investor_type: "a".repeat(2),
+            investor_id: "a".repeat(10),
+            investor_name: "a".repeat(120),
+            trader_code: "a".repeat(8),
+            secondary_order_id: "a".repeat(16),
             bid_trans_type: 1234,
             bid_exec_inst_type: 1234,
             low_limit_price: -123456789,
@@ -107,8 +156,8 @@ mod extend_204129_tests {
             settl_type: 1234,
             settl_period: 42,
             pre_trade_anonymity: 42,
-            cash_margin: vec!['a'; 1].into_iter().collect::<String>(),
-            memo: vec!['a'; 160].into_iter().collect::<String>(),
+            cash_margin: "a".to_string(),
+            memo: "a".repeat(160),
         };
 
         let mut buf = BytesMut::new();

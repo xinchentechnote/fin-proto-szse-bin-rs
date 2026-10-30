@@ -30,7 +30,7 @@ fn msg() -> NewOrder {
         security_id_source: "101".to_string(),
         owner_type: 1,
         clearing_firm: "01".to_string(),
-        transact_time: 2026_0109_0930_00123,
+        transact_time: 20_260_109_093_000_123,
         user_info: "user01".to_string(),
         cl_ord_id: "ORD000001".to_string(),
         account_id: "ACC000000001".to_string(),

@@ -8,10 +8,12 @@ pub struct Extend200315 {
 }
 
 impl BinaryCodec for Extend200315 {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
         buf.put_u32(self.maturity_date);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<Extend200315> {
         let maturity_date = buf.get_u32();
         Some(Self { maturity_date })

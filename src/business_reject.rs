@@ -2,6 +2,53 @@
 use binary_codec::*;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
+#[inline]
+fn put_fixed_string_field(
+    buf: &mut BytesMut,
+    value: &str,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) {
+    let bytes = value.as_bytes();
+    let len = bytes.len().min(fixed_length);
+    let padding_len = fixed_length - len;
+    if pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+    buf.extend_from_slice(&bytes[..len]);
+    if !pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+}
+
+#[inline]
+fn get_fixed_string_field(
+    buf: &mut Bytes,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) -> Option<String> {
+    if buf.remaining() < fixed_length {
+        return None;
+    }
+    let bytes = buf.copy_to_bytes(fixed_length);
+    let (start, end) = if pad_left {
+        let start = bytes
+            .iter()
+            .position(|&byte| byte != pad_byte)
+            .unwrap_or(fixed_length);
+        (start, fixed_length)
+    } else {
+        let end = bytes
+            .iter()
+            .rposition(|&byte| byte != pad_byte)
+            .map_or(0, |index| index + 1);
+        (0, end)
+    };
+    String::from_utf8(bytes.slice(start..end).to_vec()).ok()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BusinessReject {
     pub appl_id: String,
@@ -17,30 +64,32 @@ pub struct BusinessReject {
 }
 
 impl BinaryCodec for BusinessReject {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
-        put_char_array(buf, &self.appl_id, 3);
+        put_fixed_string_field(buf, &self.appl_id, 3, b' ', false);
         buf.put_i64(self.transact_time);
-        put_char_array(buf, &self.submitting_pbuid, 6);
-        put_char_array(buf, &self.security_id, 8);
-        put_char_array(buf, &self.security_id_source, 4);
+        put_fixed_string_field(buf, &self.submitting_pbuid, 6, b' ', false);
+        put_fixed_string_field(buf, &self.security_id, 8, b' ', false);
+        put_fixed_string_field(buf, &self.security_id_source, 4, b' ', false);
         buf.put_i64(self.ref_seq_num);
         buf.put_u32(self.ref_msg_type);
-        put_char_array(buf, &self.business_reject_ref_id, 10);
+        put_fixed_string_field(buf, &self.business_reject_ref_id, 10, b' ', false);
         buf.put_u16(self.business_reject_reason);
-        put_char_array(buf, &self.business_reject_text, 50);
+        put_fixed_string_field(buf, &self.business_reject_text, 50, b' ', false);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<BusinessReject> {
-        let appl_id = get_char_array(buf, 3)?;
+        let appl_id = get_fixed_string_field(buf, 3, b' ', false)?;
         let transact_time = buf.get_i64();
-        let submitting_pbuid = get_char_array(buf, 6)?;
-        let security_id = get_char_array(buf, 8)?;
-        let security_id_source = get_char_array(buf, 4)?;
+        let submitting_pbuid = get_fixed_string_field(buf, 6, b' ', false)?;
+        let security_id = get_fixed_string_field(buf, 8, b' ', false)?;
+        let security_id_source = get_fixed_string_field(buf, 4, b' ', false)?;
         let ref_seq_num = buf.get_i64();
         let ref_msg_type = buf.get_u32();
-        let business_reject_ref_id = get_char_array(buf, 10)?;
+        let business_reject_ref_id = get_fixed_string_field(buf, 10, b' ', false)?;
         let business_reject_reason = buf.get_u16();
-        let business_reject_text = get_char_array(buf, 50)?;
+        let business_reject_text = get_fixed_string_field(buf, 50, b' ', false)?;
         Some(Self {
             appl_id,
             transact_time,
@@ -64,16 +113,16 @@ mod business_reject_tests {
     #[test]
     fn test_business_reject_codec() {
         let original = BusinessReject {
-            appl_id: vec!['a'; 3].into_iter().collect::<String>(),
+            appl_id: "a".repeat(3),
             transact_time: -123456789,
-            submitting_pbuid: vec!['a'; 6].into_iter().collect::<String>(),
-            security_id: vec!['a'; 8].into_iter().collect::<String>(),
-            security_id_source: vec!['a'; 4].into_iter().collect::<String>(),
+            submitting_pbuid: "a".repeat(6),
+            security_id: "a".repeat(8),
+            security_id_source: "a".repeat(4),
             ref_seq_num: -123456789,
             ref_msg_type: 123456,
-            business_reject_ref_id: vec!['a'; 10].into_iter().collect::<String>(),
+            business_reject_ref_id: "a".repeat(10),
             business_reject_reason: 1234,
-            business_reject_text: vec!['a'; 50].into_iter().collect::<String>(),
+            business_reject_text: "a".repeat(50),
         };
 
         let mut buf = BytesMut::new();

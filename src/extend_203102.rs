@@ -2,6 +2,53 @@
 use binary_codec::*;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
+#[inline]
+fn put_fixed_string_field(
+    buf: &mut BytesMut,
+    value: &str,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) {
+    let bytes = value.as_bytes();
+    let len = bytes.len().min(fixed_length);
+    let padding_len = fixed_length - len;
+    if pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+    buf.extend_from_slice(&bytes[..len]);
+    if !pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+}
+
+#[inline]
+fn get_fixed_string_field(
+    buf: &mut Bytes,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) -> Option<String> {
+    if buf.remaining() < fixed_length {
+        return None;
+    }
+    let bytes = buf.copy_to_bytes(fixed_length);
+    let (start, end) = if pad_left {
+        let start = bytes
+            .iter()
+            .position(|&byte| byte != pad_byte)
+            .unwrap_or(fixed_length);
+        (start, fixed_length)
+    } else {
+        let end = bytes
+            .iter()
+            .rposition(|&byte| byte != pad_byte)
+            .map_or(0, |index| index + 1);
+        (0, end)
+    };
+    String::from_utf8(bytes.slice(start..end).to_vec()).ok()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Extend203102 {
     pub insufficient_security_id: String,
@@ -12,19 +59,21 @@ pub struct Extend203102 {
 }
 
 impl BinaryCodec for Extend203102 {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
-        put_char_array(buf, &self.insufficient_security_id, 8);
+        put_fixed_string_field(buf, &self.insufficient_security_id, 8, b' ', false);
         buf.put_u32(self.no_security);
-        put_char_array(buf, &self.underlying_security_id, 8);
-        put_char_array(buf, &self.underlying_security_id_source, 4);
+        put_fixed_string_field(buf, &self.underlying_security_id, 8, b' ', false);
+        put_fixed_string_field(buf, &self.underlying_security_id_source, 4, b' ', false);
         buf.put_i64(self.delivery_qty);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<Extend203102> {
-        let insufficient_security_id = get_char_array(buf, 8)?;
+        let insufficient_security_id = get_fixed_string_field(buf, 8, b' ', false)?;
         let no_security = buf.get_u32();
-        let underlying_security_id = get_char_array(buf, 8)?;
-        let underlying_security_id_source = get_char_array(buf, 4)?;
+        let underlying_security_id = get_fixed_string_field(buf, 8, b' ', false)?;
+        let underlying_security_id_source = get_fixed_string_field(buf, 4, b' ', false)?;
         let delivery_qty = buf.get_i64();
         Some(Self {
             insufficient_security_id,
@@ -44,10 +93,10 @@ mod extend_203102_tests {
     #[test]
     fn test_extend_203102_codec() {
         let original = Extend203102 {
-            insufficient_security_id: vec!['a'; 8].into_iter().collect::<String>(),
+            insufficient_security_id: "a".repeat(8),
             no_security: 123456,
-            underlying_security_id: vec!['a'; 8].into_iter().collect::<String>(),
-            underlying_security_id_source: vec!['a'; 4].into_iter().collect::<String>(),
+            underlying_security_id: "a".repeat(8),
+            underlying_security_id_source: "a".repeat(4),
             delivery_qty: -123456789,
         };
 

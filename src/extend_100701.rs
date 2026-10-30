@@ -2,6 +2,53 @@
 use binary_codec::*;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
+#[inline]
+fn put_fixed_string_field(
+    buf: &mut BytesMut,
+    value: &str,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) {
+    let bytes = value.as_bytes();
+    let len = bytes.len().min(fixed_length);
+    let padding_len = fixed_length - len;
+    if pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+    buf.extend_from_slice(&bytes[..len]);
+    if !pad_left {
+        buf.put_bytes(pad_byte, padding_len);
+    }
+}
+
+#[inline]
+fn get_fixed_string_field(
+    buf: &mut Bytes,
+    fixed_length: usize,
+    pad_byte: u8,
+    pad_left: bool,
+) -> Option<String> {
+    if buf.remaining() < fixed_length {
+        return None;
+    }
+    let bytes = buf.copy_to_bytes(fixed_length);
+    let (start, end) = if pad_left {
+        let start = bytes
+            .iter()
+            .position(|&byte| byte != pad_byte)
+            .unwrap_or(fixed_length);
+        (start, fixed_length)
+    } else {
+        let end = bytes
+            .iter()
+            .rposition(|&byte| byte != pad_byte)
+            .map_or(0, |index| index + 1);
+        (0, end)
+    };
+    String::from_utf8(bytes.slice(start..end).to_vec()).ok()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Extend100701 {
     pub expiration_days: u16,
@@ -10,16 +57,18 @@ pub struct Extend100701 {
 }
 
 impl BinaryCodec for Extend100701 {
+    #[inline]
     fn encode(&self, buf: &mut BytesMut) {
         buf.put_u16(self.expiration_days);
         buf.put_u8(self.expiration_type);
-        put_char_array(buf, &self.share_property, 2);
+        put_fixed_string_field(buf, &self.share_property, 2, b' ', false);
     }
 
+    #[inline]
     fn decode(buf: &mut Bytes) -> Option<Extend100701> {
         let expiration_days = buf.get_u16();
         let expiration_type = buf.get_u8();
-        let share_property = get_char_array(buf, 2)?;
+        let share_property = get_fixed_string_field(buf, 2, b' ', false)?;
         Some(Self {
             expiration_days,
             expiration_type,
@@ -38,7 +87,7 @@ mod extend_100701_tests {
         let original = Extend100701 {
             expiration_days: 1234,
             expiration_type: 42,
-            share_property: vec!['a'; 2].into_iter().collect::<String>(),
+            share_property: "a".repeat(2),
         };
 
         let mut buf = BytesMut::new();
