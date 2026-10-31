@@ -181,6 +181,20 @@ impl BinaryCodec for SzseBinary {
 #[cfg(test)]
 mod szse_binary_tests {
     use super::*;
+    use crate::business_reject::*;
+    use crate::cancel_reject::*;
+    use crate::execution_confirm::*;
+    use crate::execution_report::*;
+    use crate::heartbeat::*;
+    use crate::logon::*;
+    use crate::logout::*;
+    use crate::new_order::*;
+    use crate::order_cancel_request::*;
+    use crate::platform_partition::*;
+    use crate::platform_state_info::*;
+    use crate::report_finished::*;
+    use crate::report_synchronization::*;
+    use crate::trading_session_status::*;
     use bytes::BytesMut;
 
     #[test]
